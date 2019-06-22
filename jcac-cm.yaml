@@ -1,0 +1,178 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-envs
+  namespace: jenkins
+data:
+  JENKINS_SLAVE_AGENT_PORT: "32000"
+  JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"
+  JENKINS_USER: "admin"
+  JENKINS_PASS: "admin"
+  SECRETS: "/secrets"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-default-user-groovy
+  namespace: jenkins
+data:
+  default-user.groovy: |
+    import jenkins.model.*
+    import hudson.security.*
+
+    def env = System.getenv()
+
+    def jenkins = Jenkins.getInstance()
+    jenkins.setSecurityRealm(new HudsonPrivateSecurityRealm(false))
+    jenkins.setAuthorizationStrategy(new GlobalMatrixAuthorizationStrategy())
+
+    def user = jenkins.getSecurityRealm().createAccount(env.JENKINS_USER, env.JENKINS_PASS)
+    user.save()
+
+    jenkins.getAuthorizationStrategy().add(Jenkins.ADMINISTER, env.JENKINS_USER)
+    jenkins.save()
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-plugin-list
+  namespace: jenkins
+data:
+  plugins.txt: |
+    workflow-aggregator:latest
+    blueocean:latest
+    pipeline-maven:latest
+    configuration-as-code:latest
+    configuration-as-code-support:latest
+    job-dsl:latest
+    git:latest
+    docker-workflow:latest
+    credentials-binding:latest
+    role-strategy:latest
+    matrix-auth:latest
+    jdk-tool:latest
+    bouncycastle-api:latest
+    command-launcher:latest
+    jaxb:latest
+    sonar:latest
+    timestamper:latest
+    ansicolor:latest
+    script-security:latest
+    ws-cleanup:latest
+    jquery:latest
+    jquery-ui:latest
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-as-code-config
+  namespace: jenkins
+data:
+  jenkins.yaml: |
+    jenkins:
+      systemMessage: |
+        Jenkins configured automaticlly by Jenkins As A Code plugin.
+        Slaves will be provision dynamically(this can take up to few mins, please wait).
+      scmCheckoutRetryCount: 2
+      numExecutors: 2
+      authorizationStrategy:
+        roleBased:
+          roles:
+            global:
+              - name: "admin"
+                description: "Jenkins administrators"
+                permissions:
+                  - "Overall/Administer"
+                assignments:
+                  - "jenkins-administrators"
+              - name: "user"
+                description: "Logged in users"
+                permissions:
+                  - "Overall/Read"
+                  - "Job/Read"
+                assignments:
+                  - "jenkins-users"
+              - name: "readonly"
+                description: "Anonymous"
+                permissions:
+                  - "Overall/Read"
+                assignments:
+                  - "anonymous"
+    tool:
+      git:
+        installations:
+        - home: "git"
+          name: "Default"
+      maven:
+        installations:
+        - name: "Maven 3"
+          properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.6.1"
+      dockerTool:
+        installations:
+        - name: "docker"
+          properties:
+          - installSource:
+              installers:
+                - docker:
+                    version: "latest"
+      jdk:
+        installations:
+          - name: jdk8
+            home: ""
+            properties:
+              - installSource:
+                  installers:
+                  - jdkInstaller :
+                      id: 'jdk-8u212-oth-JPR'
+                      acceptLicense: true
+    credentials:
+      system:
+        domainCredentials:
+          - credentials:
+              - usernamePassword:
+                  scope: GLOBAL
+                  id: "technical"
+                  username: "technical"
+                  password: "technical"
+                  description: "Example username with password. Please move password to K8s_secret, mount it as env var and repleace: password with: $(some_password)"
+              - string:
+                  scope: GLOBAL
+                  id: "secret-text"
+                  secret: "SomeSecretText"
+                  description: "Some Secret Text"
+              - file:
+                  scope: GLOBAL
+                  id: "secret-file"
+                  fileName: "mysecretfile.txt"
+                  secretBytes: ${SECRET_FILE_BYTES} # SECRET_FILE_BYTES="$(cat mysecretfile.txt | base64)"
+                  description: "Some Secret File"
+              - basicSSHUserPrivateKey:
+                  scope: GLOBAL
+                  id: "technical-ssh"
+                  username: "technical-ssh"
+                  passphrase: ""
+                  description: "Example SSH username with priv key(Please use K8s secret and read it from sys env) - !!!!This SSH key is ony Example, please do not use it!!!!"
+                  privateKeySource:
+                    directEntry:
+                      privateKey: |
+                        -----BEGIN OPENSSH PRIVATE KEY-----
+                        b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAlwAAAAdzc2gtcn
+                        NhAAAAAwEAAQAAAIEAqEZpe7CQ+Ca+Vb68xZgX6oSQM4Pgd4QZZuDgV7jWLOPVehe5s8VJ
+                        r8rssRYRYwbfQYXECvYHJj7nVwWG/ePcp55ix981LpcCQ4n/dEzVDljgAQJlcG8wFLYsLW
+                        XZhv9vXfQSqdGhGHubw7/VoHE/bm6p3j3iG0OCBSQ6Isfi+kcAAAIIz2yPuM9sj7gAAAAH
+                        c3NoLXJzYQAAAIEAqEZpe7CQ+Ca+Vb68xZgX6oSQM4Pgd4QZZuDgV7jWLOPVehe5s8VJr8
+                        rssRYRYwbfQYXECvYHJj7nVwWG/ePcp55ix981LpcCQ4n/dEzVDljgAQJlcG8wFLYsLWXZ
+                        hv9vXfQSqdGhGHubw7/VoHE/bm6p3j3iG0OCBSQ6Isfi+kcAAAADAQABAAAAgBg4ckxcYL
+                        FnGjRLTO5/8slNpVfU3oU1XVaifYgC0ckKThrRuWf3uKB169WdYIlJXu8Wat5NBUBrA29S
+                        G1kF6Cd4WVD0OvWMpY3HoM2g08HAANR7HEvQZI2FMagd2dMqkFjNxe28ohFRvrfauizoir
+                        X7Z/pcKErRsxtWysWmwpPJAAAAQQCyLPSKmlN7IY3EO4NdknTDTko34OhGHlQZcVjUK+b4
+                        13gtcDivypbPWcgf+wJGHb1R2rnjXugoXq4Ji92IouECAAAAQQDcLBRXZqprb/XXPHZXUV
+                        y9CuxMdBT/UZ8lyTkGpD2n4I8wX9UawPdO2TWdV5BJ3wZqG6wpR7IhvsUlLPVMz36LAAAA
+                        QQDDqGeN411mTAeYCpO/eH838ikX8mrqHoJTe3rGxXJ5TfaS4hfCTmVMWTaglA4uK+7QGO
+                        iA7GXEU2/tFST4zca1AAAAEm9pc2lzQG9pc2lzLWxhcHRvcA==
+                        -----END OPENSSH PRIVATE KEY-----

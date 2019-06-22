@@ -1,0 +1,92 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins-master
+  namespace: jenkins
+  labels:
+    app: jenkins-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins-master
+  template:
+    metadata:
+      labels:
+        app: jenkins-master
+    spec:
+      initContainers:
+      - name: install-plugins
+        image: jenkins/jenkins:lts
+        command:
+          - /bin/sh
+          - -c
+          - install-plugins.sh < /usr/share/jenkins/ref/plugins.txt
+        volumeMounts:
+        - name: ref-volume
+          mountPath: /usr/share/jenkins/ref
+        - name: jenkins-plugin-list
+          mountPath: /usr/share/jenkins/ref/plugins.txt
+          subPath: plugins.txt
+      containers:
+      - name: jenkins-master
+        image: jenkins/jenkins:lts
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: jenkins-default-user-groovy
+          mountPath: /usr/share/jenkins/ref/init.groovy.d/default-user.groovy
+          subPath: default-user.groovy
+        - name: jenkins-plugin-list
+          mountPath: /usr/share/jenkins/ref/plugins.txt
+          subPath: plugins.txt
+        - name: jenkins-as-code-config
+          mountPath: /usr/share/jenkins/ref/jenkins.yaml
+          subPath: jenkins.yaml
+        - name: ref-volume
+          mountPath: /usr/share/jenkins/ref
+        ports:
+        - name: web
+          containerPort: 8080
+          protocol: TCP
+        - name: jnlp
+          containerPort: 32000
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: jenkins-envs
+      volumes:
+        - name: jenkins-default-user-groovy
+          configMap:
+            name: jenkins-default-user-groovy
+        - name: jenkins-plugin-list
+          configMap:
+            name: jenkins-plugin-list
+        - name: jenkins-as-code-config
+          configMap:
+            name: jenkins-as-code-config
+        - name: ref-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-master
+  namespace: jenkins
+  labels:
+    io.kompose.service: jenkins-master
+spec:
+  type: NodePort
+  ports:
+  - name: web
+    port: 8080
+    targetPort: web
+    protocol: TCP
+    nodePort: 32080
+  - name: jnlp
+    port: 32000
+    targetPort: jnlp
+    protocol: TCP
+    nodePort: 32000
+  selector:
+    app: jenkins-master
